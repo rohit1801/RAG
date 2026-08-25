@@ -1,6 +1,7 @@
 from langchain_chroma import Chroma
-from langchain_ollama import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings, ChatOllama
 from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage, SystemMessage
 
 load_dotenv()
 
@@ -36,6 +37,37 @@ print("--- Context ---")
 for i, doc in enumerate(relevant_docs, 1):
     print(f"Document {i}:\n{doc.page_content}\n")
 
+# Combine the query and the relevant document contents
+combined_input = f"""Based on the following documents, please answer this question: {query}
+
+Documents:
+{chr(10).join([f"- {doc.page_content}" for doc in relevant_docs])}
+
+Please provide a clear, helpful answer using only the information from these documents. If you can't find the answer in the documents, say "I don't have enough information to answer that question based on the provided documents."
+"""
+
+# Initialize the model
+llm = ChatOllama(
+    model="llama3.1:8b",      # Or any model pulled via Ollama (e.g. "qwen2.5-coder:32b")
+    temperature=0.7, #temperature is a hyperparameter that controls the randomness and creativity of the model's responses. Setting temperature=0 does not mean zero intelligence—it means the model consistently picks the most probable next word every time. If the temperature is set too high (e.g., $>1.5$), output tends to become incoherent, rambling, or nonsensical.
+    # base_url="http://localhost:11434"  # Default Ollama host
+)
+
+# Define the messages for the model
+messages = [
+    SystemMessage(content="You are a helpful assistant."),
+    HumanMessage(content=combined_input),
+]
+
+# Invoke the model with the combined input
+result = llm.invoke(messages)
+
+# Display the full result and content only
+print("\n--- Generated Response ---")
+# print("Full result:")
+# print(result)
+print("Content only:")
+print(result.content)
 
 # Synthetic Questions: 
 
