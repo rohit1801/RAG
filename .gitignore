@@ -4,6 +4,7 @@
 # Vector database
 db/
 db2/
+json/
 
 # Python
 __pycache__/
