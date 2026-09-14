@@ -3,6 +3,7 @@
 
 # Vector database
 db/
+db2/
 
 # Python
 __pycache__/
