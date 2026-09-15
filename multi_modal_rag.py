@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from typing import List
 
 # Unstructured for document parsing
@@ -188,7 +189,7 @@ def summarise_chunks(chunks):
     print(f"✅ Processed {len(langchain_documents)} chunks")
     return langchain_documents
 
-def export_chunks_to_json(chunks, filename="docs/chunks_export.json"):
+def export_chunks_to_json(chunks, filename="json/chunks_export.json"):
     """Export processed chunks to clean JSON format"""
     export_data = []
     
@@ -226,10 +227,30 @@ def create_vector_store(chunks, persist_directory="db2/chroma_db"):
     print(f"✅ Vector store created and persisted at {persist_directory}")
     return db
 
-def run_complete_ingestion_pipeline(file_path: str = "docs/attention-is-all-you-need.pdf"):
-    """Process a PDF and store its chunks in ChromaDB."""
+def run_complete_ingestion_pipeline(
+    file_path: str = "docs/attention-is-all-you-need.pdf",
+    persist_directory: str = "db2/chroma_db",
+):
+    """Process a PDF and store its chunks in ChromaDB.
+
+    If a persisted Chroma DB already exists at `persist_directory`, load and
+    return it immediately without running the full ingestion pipeline.
+    """
     if not file_path:
         raise ValueError("file_path cannot be empty")
+
+    # Early exit: if DB already exists, load and return it without re-ingesting
+    try:
+        if os.path.exists(persist_directory) and any(os.scandir(persist_directory)):
+            print(f"ℹ️ Chroma DB found at {persist_directory}. Loading existing DB and skipping ingestion.")
+            embedding_model = OllamaEmbeddings(model="nomic-embed-text")
+            try:
+                db = Chroma(persist_directory=persist_directory, embedding_function=embedding_model)
+                return db
+            except Exception as e:
+                print(f"⚠️ Failed to load existing Chroma DB: {e}. Proceeding with ingestion.")
+    except Exception as e:
+        print(f"⚠️ Could not inspect persist directory {persist_directory}: {e}. Proceeding with ingestion.")
 
     elements = partition_document(file_path)
 
@@ -243,7 +264,7 @@ def run_complete_ingestion_pipeline(file_path: str = "docs/attention-is-all-you-
     export_chunks_to_json(processed_chunks)
 
     # Create and persist vector store
-    db = create_vector_store(processed_chunks)
+    db = create_vector_store(processed_chunks, persist_directory=persist_directory)
 
     print("🎉 Pipeline completed successfully!")
     return db
@@ -324,15 +345,22 @@ if __name__ == "__main__":
         default="docs/attention-is-all-you-need.pdf",
         help="Path to the PDF file to process.", 
     )
+    parser.add_argument(
+        "--persist_directory",
+        "-p",
+        type=str,
+        default="db2/chroma_db",
+        help="Path to the ChromaDB persist directory (used to detect existing DB).",
+    )
     args = parser.parse_args()
-    db = run_complete_ingestion_pipeline(args.file_path)
+    db = run_complete_ingestion_pipeline(args.file_path, persist_directory=args.persist_directory)
     # Query the vector store
     query = "How many attention heads does the Transformer use, and what is the dimension of each head? "
 
     retriever = db.as_retriever(search_kwargs={"k": 3})
     chunks = retriever.invoke(query)
 
-    export_chunks_to_json(chunks, "docs/rag_results.json")
+    export_chunks_to_json(chunks, "json/rag_results.json")
 
     # Generate final answer
     final_answer = generate_final_answer(chunks, query)
